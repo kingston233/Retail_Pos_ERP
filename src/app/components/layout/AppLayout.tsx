@@ -1,0 +1,69 @@
+import { useState, useEffect } from "react";
+import { Outlet } from "react-router";
+import { Toaster, toast } from "sonner";
+import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
+import { NotificationPanel } from "./NotificationPanel";
+import { supabase } from "../../lib/api";
+
+export function AppLayout() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+
+  useEffect(() => {
+    // 訂閱 PostgreSQL 的 alerts 表 INSERT 事件
+    const channel = supabase
+      .channel("public:alerts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "alerts" },
+        (payload: any) => {
+          const alert = payload.new;
+          // 按嚴重程度選擇不同的 Toast 樣式
+          if (alert.type === "critical") {
+            toast.error(`🚨 ${alert.title}`, { description: alert.detail, duration: 8000 });
+          } else if (alert.type === "warning") {
+            toast.warning(`⚠️ ${alert.title}`, { description: alert.detail, duration: 5000 });
+          } else if (alert.type === "success") {
+            toast.success(`✅ ${alert.title}`, { description: alert.detail, duration: 4000 });
+          } else {
+            toast.info(`ℹ️ ${alert.title}`, { description: alert.detail, duration: 4000 });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  return (
+    <div className="flex h-screen overflow-hidden" style={{ background: "#F1F5F9" }}>
+      <Toaster position="bottom-right" expand={true} richColors />
+      {/* Sidebar */}
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        notificationCount={3}
+      />
+
+      {/* Main content */}
+      <div className="flex flex-col flex-1 min-w-0">
+        <TopBar
+          onNotificationClick={() => setNotificationOpen(true)}
+          notificationCount={3}
+        />
+        <main className="flex-1 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
+
+      {/* Notification Panel */}
+      <NotificationPanel
+        open={notificationOpen}
+        onClose={() => setNotificationOpen(false)}
+      />
+    </div>
+  );
+}
