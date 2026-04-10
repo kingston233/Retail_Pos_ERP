@@ -13,6 +13,7 @@ import {
   HelpCircle,
   LogOut,
   Store,
+  Receipt,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -27,6 +28,7 @@ const navItems = [
     items: [
       { path: "/dashboard", label: "營運儀表板", icon: LayoutDashboard },
       { path: "/pos", label: "POS 收銀", icon: ShoppingCart },
+      { path: "/transactions", label: "交易明細", icon: Receipt },
       { path: "/inventory", label: "庫存管理", icon: Package },
     ],
   },

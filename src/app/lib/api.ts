@@ -6,33 +6,61 @@ export const getProducts = async (): Promise<{ data: Product[] }> => {
   const { data, error } = await supabase.from("inventory").select("*, categories:category_id(name), suppliers:supplier_id(name)");
   if (error) throw error;
   
-  const mapped = data.map((p: any) => ({
-    id: p.id,
-    image: `https://via.placeholder.com/150?text=${encodeURIComponent(p.name)}`, // 這裡可以換成真實圖片
-    name: p.name,
-    barcode: p.barcode,
-    category: p.categories?.name || "未分類",
-    original_price: Number(p.original_price ?? 0),
-    ai_price: p.dynamic_price ? Number(p.dynamic_price) : Number(p.original_price ?? 0),
-    ai_price_change: p.dynamic_price ? Number(p.dynamic_price) - Number(p.original_price ?? 0) : 0,
-    stock: Number(p.current_stock ?? 0),
-    safety_stock: Number(p.safety_stock ?? 0),
-    expiry_date: p.expiration_date || "無",
-    expiry_status: "normal",
-    supplier: p.suppliers?.name || "未知供應商",
-    created_at: p.created_at,
-    updated_at: p.updated_at
-  }));
+  const mapped = data.map((p: any) => {
+    const catName = p.categories?.name || "未分類";
+    let randomEmoji = "📦";
+    if (catName.includes("飲料") || catName.includes("飲")) randomEmoji = "🥤";
+    else if (catName.includes("食品") || catName.includes("麵") || catName.includes("便當")) randomEmoji = "🍱";
+    else if (catName.includes("生鮮")) randomEmoji = "🥬";
+    else if (catName.includes("雜貨") || catName.includes("用品")) randomEmoji = "🧴";
+    else if (catName.includes("零食")) randomEmoji = "🍪";
+
+    let expiryStatus = "normal";
+    if (p.expiration_date) {
+      const exp = new Date(p.expiration_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      exp.setHours(0, 0, 0, 0);
+      const diffTime = exp.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) expiryStatus = "expired";
+      else if (diffDays === 0) expiryStatus = "critical";
+      else if (diffDays <= 1) expiryStatus = "warning";
+    }
+
+    return {
+      id: p.id,
+      image: randomEmoji,
+      name: p.name,
+      barcode: p.barcode,
+      category: catName,
+      original_price: Number(p.original_price ?? 0),
+      ai_price: p.dynamic_price ? Number(p.dynamic_price) : Number(p.original_price ?? 0),
+      ai_price_change: p.dynamic_price ? Number(p.dynamic_price) - Number(p.original_price ?? 0) : 0,
+      stock: Number(p.current_stock ?? 0),
+      safety_stock: Number(p.safety_stock ?? 0),
+      expiry_date: p.expiration_date || "無",
+      expiry_status: expiryStatus,
+      supplier: p.suppliers?.name || "未知供應商",
+      reorder_rules: p.reorder_rules || {},
+      created_at: p.created_at,
+      updated_at: p.updated_at
+    };
+  });
   return { data: mapped as Product[] };
 };
 
-export const createProduct = async (body: Partial<Product>) => {
+export const createProduct = async (body: any) => {
   const { data, error } = await supabase.from("inventory").insert([{
     barcode: body.barcode,
     name: body.name,
+    category_id: body.category_id,
+    supplier_id: body.supplier_id,
     original_price: body.original_price,
     current_stock: body.stock,
     safety_stock: body.safety_stock,
+    expiration_date: body.expiration_date || null,
+    reorder_rules: body.reorder_rules || {},
     unit: "件",
     is_active: true
   }]).select().single();
@@ -41,14 +69,16 @@ export const createProduct = async (body: Partial<Product>) => {
 };
 
 export const updateProduct = async (id: string, body: Partial<Product>) => {
-  const { data, error } = await supabase.from("inventory").update({
-    name: body.name,
-    original_price: body.original_price,
-    dynamic_price: body.ai_price === body.original_price ? null : body.ai_price,
-    current_stock: body.stock,
-    safety_stock: body.safety_stock,
-    updated_at: new Date().toISOString()
-  }).eq("id", id).select().single();
+  const updateData: any = { updated_at: new Date().toISOString() };
+  if (body.name !== undefined) updateData.name = body.name;
+  if (body.original_price !== undefined) updateData.original_price = body.original_price;
+  if (body.ai_price !== undefined) updateData.dynamic_price = body.ai_price === body.original_price ? null : body.ai_price;
+  if (body.stock !== undefined) updateData.current_stock = body.stock;
+  if (body.safety_stock !== undefined) updateData.safety_stock = body.safety_stock;
+  if (body.expiration_date !== undefined) updateData.expiration_date = body.expiration_date;
+  if (body.reorder_rules !== undefined) updateData.reorder_rules = body.reorder_rules;
+
+  const { data, error } = await supabase.from("inventory").update(updateData).eq("id", id).select().single();
   if (error) throw error;
   return { data };
 };
@@ -57,6 +87,28 @@ export const deleteProduct = async (id: string) => {
   const { error } = await supabase.from("inventory").delete().eq("id", id);
   if (error) throw error;
   return { success: true };
+};
+
+// ── Categories & Suppliers ───────────────────────────────────────────────────
+export interface CategoryObj { id: string; name: string; }
+export interface SupplierObj { id: string; name: string; }
+
+export const getCategories = async (): Promise<{ data: CategoryObj[] }> => {
+  const { data, error } = await supabase.from("categories").select("id, name").order('created_at', { ascending: true });
+  if (error) throw error;
+  return { data };
+};
+
+export const createCategory = async (name: string) => {
+  const { data, error } = await supabase.from("categories").insert([{ name }]).select().single();
+  if (error) throw error;
+  return { data };
+};
+
+export const getSuppliers = async (): Promise<{ data: SupplierObj[] }> => {
+  const { data, error } = await supabase.from("suppliers").select("id, name").order('name', { ascending: true });
+  if (error) throw error;
+  return { data };
 };
 
 // ── Transactions ──────────────────────────────────────────────────────────────
@@ -68,7 +120,7 @@ export const getTransactions = async (): Promise<{ data: Transaction[] }> => {
     cashier: t.cashier_id || "系統",
     total: Number(t.total_amount ?? 0),
     payment_method: t.payment_method,
-    items_count: t.transaction_items?.length || 0,
+    items_count: t.transaction_items?.reduce((sum: number, ti: any) => sum + ti.quantity, 0) || 0,
     items: t.transaction_items?.map((ti: any) => ({
       product_id: ti.inventory_id,
       name: ti.inventory?.name || "未知",
@@ -128,16 +180,59 @@ export const updateAlert = async (id: string, body: Partial<Alert>) => {
 };
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-export const getDashboardKPI = async (): Promise<{ data: DailyKPI }> => {
-  const { data, error } = await supabase.from("daily_kpi").select("*").eq("date", new Date().toISOString().split('T')[0]).single();
-  if (error && error.code !== "PGRST116") throw error; // PGRST116 is not found
-  if (!data) return { data: { date: new Date().toISOString(), revenue: 0, prev_revenue: 0, revenue_change: 0, customers: 0, customers_change: 0, low_stock_count: 0, low_stock_critical: 0, alert_count: 0, peak_hour: "12:00", daily_target: 100000, target_achievement: 0 } };
-  return { data };
+export const getDashboardKPI = async (): Promise<{ data: DailyKPI & { low_stock_items: Product[] } }> => {
+  const dateStr = new Date().toISOString().split('T')[0];
+  
+  // 1. Fetch base KPI for yesterday's revenue / fallback
+  const { data: baseKpi } = await supabase.from("daily_kpi").select("*").eq("date", dateStr).maybeSingle();
+  
+  // 2. Fetch today's transactions
+  const { data: txData } = await supabase.from("transactions")
+    .select("total_amount")
+    .gte("created_at", `${dateStr}T00:00:00Z`);
+
+  const realRevenue = (txData || []).reduce((sum, tx) => sum + (Number(tx.total_amount) || 0), 0);
+
+  // 3. Fetch inventory for low stock
+  const { data: invData } = await supabase.from("inventory").select("id, name, barcode, current_stock, safety_stock");
+  let lowStockCount = 0;
+  let criticalCount = 0;
+  const lowStockItems: any[] = [];
+
+  (invData || []).forEach(p => {
+    if (p.current_stock <= p.safety_stock) {
+      lowStockCount++;
+      lowStockItems.push(p);
+      if (p.current_stock === 0) criticalCount++;
+    }
+  });
+
+  const prevRev = baseKpi?.prev_revenue || 0;
+  const revenueChange = prevRev > 0 ? Math.round(((realRevenue - prevRev) / prevRev) * 100) : 0;
+
+  const kpiData = baseKpi || {
+    date: dateStr, revenue: 0, prev_revenue: 0, revenue_change: 0,
+    customers: txData?.length || 0, customers_change: 0,
+    low_stock_count: 0, low_stock_critical: 0, alert_count: 0,
+    peak_hour: "12:00", daily_target: 100000, target_achievement: 0
+  };
+
+  return { 
+    data: {
+      ...kpiData,
+      revenue: realRevenue,
+      revenue_change: revenueChange,
+      low_stock_count: lowStockCount,
+      low_stock_critical: criticalCount,
+      customers: txData?.length || kpiData.customers,
+      low_stock_items: lowStockItems
+    }
+  };
 };
 
 const getKvData = async <T>(key: string, defaultValue: T): Promise<{ data: T }> => {
-  const { data, error } = await supabase.from("kv_store").select("value").eq("key", key).single();
-  if (error && error.code !== "PGRST116") throw error;
+  const { data, error } = await supabase.from("kv_store").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
   return { data: data ? data.value as T : defaultValue };
 };
 
@@ -166,6 +261,28 @@ export const createEdgeLog = async (body: Partial<EdgeLog>) => {
   return { data };
 };
 
+export const getDatabaseStats = async () => {
+  const tables = [
+    { name: "categories", desc: "商品類別維度表 · id, name, description", fk: "" },
+    { name: "suppliers", desc: "供應商資料表 · id, name, contact_name, phone, email, address", fk: "" },
+    { name: "inventory", desc: "商品庫存主表 · barcode, name, original_price, dynamic_price, current_stock, safety_stock, arrival/exp_date", fk: "FK→categories, FK→suppliers" },
+    { name: "transactions", desc: "交易主單表 · total_amount, payment_method", fk: "FK→auth.users" },
+    { name: "transaction_items", desc: "交易明細表 · quantity, unit_price, subtotal(GENERATED ALWAYS)", fk: "FK→transactions, FK→inventory" },
+    { name: "alerts", desc: "統一警示表（Realtime 推播）· alert_type, severity, status, auto_action", fk: "FK→inventory" },
+    { name: "edge_logs", desc: "YOLOv8 邊緣數據 · camera_id, log_type, numeric_value, json_features", fk: "" },
+    { name: "ml_forecasts", desc: "FastAPI ML 銷量預測 · forecast_date, forecast_quantity", fk: "FK→inventory" },
+  ];
+
+  const results = await Promise.all(
+    tables.map(async t => {
+      const { count } = await supabase.from(t.name).select('*', { count: 'exact', head: true });
+      return { ...t, count: count || 0 };
+    })
+  );
+
+  return { data: results };
+};
+
 // ── ML Forecasts ──────────────────────────────────────────────────────────────
 export const upsertMlForecasts = async (rows: Partial<MlForecast>[]) => { return { data: [] as MlForecast[], count: 0 }; };
 
@@ -178,7 +295,7 @@ export const runMigration = async () => {
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-export interface Product { id: string; image: string; name: string; barcode: string; category: string; original_price: number; ai_price: number; ai_price_change: number; stock: number; safety_stock: number; expiry_date: string; expiry_status: "normal" | "warning" | "critical" | "expired"; supplier: string; created_at?: string; updated_at?: string; }
+export interface Product { id: string; image: string; name: string; barcode: string; category: string; original_price: number; ai_price: number; ai_price_change: number; stock: number; safety_stock: number; expiry_date: string; expiry_status: "normal" | "warning" | "critical" | "expired"; supplier: string; created_at?: string; updated_at?: string; reorder_rules?: Record<string, number>; }
 export interface TransactionItem { product_id: string; name: string; qty: number; price: number; }
 export interface Transaction { id: string; cashier: string; total: number; payment_method: string; items_count: number; items: TransactionItem[]; created_at: string; }
 export interface Customer { id: string; name: string; phone: string; tier: "白金" | "金卡" | "銀卡" | "普通"; visits: number; total_spent: number; last_visit: string; avg_order: number; change: string; trend_up: boolean; created_at?: string; }

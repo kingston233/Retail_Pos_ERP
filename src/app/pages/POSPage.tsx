@@ -37,13 +37,19 @@ export function POSPage() {
   const [checkoutDone, setCheckoutDone] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const barcodeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const loadProducts = async () => {
+    const loadData = async () => {
       setLoadingProducts(true);
       try {
-        const res = await api.getProducts();
+        const [res, catRes] = await Promise.all([
+          api.getProducts(),
+          api.getCategories()
+        ]);
         const catalog: CartItem[] = (res.data ?? []).map((p) => ({
           id: p.id,
           name: p.name,
@@ -55,16 +61,30 @@ export function POSPage() {
           category: p.category,
         }));
         setProductCatalog(catalog);
+        setCategories(catRes.data.map(c => c.name));
       } catch (err) {
-        console.error("Failed to load products:", err);
+        console.error("Failed to load data:", err);
       } finally {
         setLoadingProducts(false);
       }
     };
-    loadProducts();
+    loadData();
   }, []);
 
-  const quickCategories = ["全部", ...Array.from(new Set(productCatalog.map((p) => p.category)))];
+  const quickCategories = ["全部", ...categories];
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      await api.createCategory(newCategoryName);
+      setCategories([...categories, newCategoryName]);
+      setSelectedCategory(newCategoryName);
+      setIsAddingCategory(false);
+      setNewCategoryName("");
+    } catch (err) {
+      console.error("Failed to create category", err);
+    }
+  };
 
   const filteredProducts = productCatalog.filter((p) => {
     const matchSearch = !search || p.name.includes(search) || p.barcode.includes(search);
@@ -163,13 +183,23 @@ export function POSPage() {
           </button>
         </div>
 
-        {/* Category Filter */}
-        <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+        <div className="flex gap-2 mb-3 overflow-x-auto pb-1 items-center">
           {quickCategories.map((cat) => (
-            <button key={cat} onClick={() => setSelectedCategory(cat)} className="rounded-lg px-3 whitespace-nowrap transition-all" style={{ height: "30px", fontSize: "0.75rem", fontWeight: selectedCategory === cat ? 600 : 400, background: selectedCategory === cat ? "#4F46E5" : "#FFFFFF", color: selectedCategory === cat ? "#FFFFFF" : "#64748B", border: `1px solid ${selectedCategory === cat ? "#4F46E5" : "#E2E8F0"}`, cursor: "pointer" }}>
+            <button key={cat} onClick={() => setSelectedCategory(cat)} className="rounded-lg px-3 flex-shrink-0 transition-all" style={{ height: "30px", fontSize: "0.75rem", fontWeight: selectedCategory === cat ? 600 : 400, background: selectedCategory === cat ? "#4F46E5" : "#FFFFFF", color: selectedCategory === cat ? "#FFFFFF" : "#64748B", border: `1px solid ${selectedCategory === cat ? "#4F46E5" : "#E2E8F0"}`, cursor: "pointer" }}>
               {cat}
             </button>
           ))}
+          {isAddingCategory ? (
+            <div className="flex items-center gap-1 rounded-lg px-2 flex-shrink-0 overflow-hidden" style={{ height: "30px", background: "#FFFFFF", border: "1px solid #4F46E5" }}>
+              <input autoFocus type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCategory()} className="text-xs outline-none border-none" style={{width: "60px", color: "#1E293B"}} placeholder="新種類..." />
+              <button onClick={handleAddCategory} className="cursor-pointer bg-transparent border-none text-xs" style={{ color: "#4F46E5", fontWeight: "bold" }}>✓</button>
+              <button onClick={() => setIsAddingCategory(false)} className="cursor-pointer bg-transparent border-none text-xs ml-1" style={{ color: "#94A3B8" }}>✕</button>
+            </div>
+          ) : (
+            <button onClick={() => setIsAddingCategory(true)} className="rounded-lg px-2 flex items-center justify-center flex-shrink-0 transition-all" style={{ height: "30px", fontSize: "0.75rem", background: "#F1F5F9", color: "#4F46E5", border: "1px dashed #CBD5E1", cursor: "pointer" }}>
+              ➕ 種類
+            </button>
+          )}
         </div>
 
         {/* Product Grid */}

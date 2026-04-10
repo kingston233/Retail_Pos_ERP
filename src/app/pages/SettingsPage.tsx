@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Settings, Store, Bell, Shield, Cpu, Users, ChevronRight,
   Save, Globe, Mail, Smartphone, Database, CheckCircle, Loader2, AlertTriangle
@@ -205,6 +205,11 @@ function DatabaseSettings() {
   const [migrateMsg,    setMigrateMsg]    = useState<{ success: boolean; message: string; passed?: number; total?: number } | null>(null);
   const [seedResult,    setSeedResult]    = useState<{ success: boolean; message: string; summary?: Record<string, number> } | null>(null);
   const [expandSteps,   setExpandSteps]   = useState(false);
+  const [tables, setTables] = useState<any[]>([]);
+  
+  useEffect(() => {
+    api.getDatabaseStats().then(res => setTables(res.data)).catch(console.error);
+  }, []);
 
   const handleMigrate = async () => {
     if (!confirm("確定要執行 PostgreSQL 資料庫遷移？這將重建所有資料表與函數（現有資料將被清除）。")) return;
@@ -220,6 +225,7 @@ function DatabaseSettings() {
       setMigrateMsg({ success: false, message: `連線失敗：${err.message}` });
     } finally {
       setMigrating(false);
+      api.getDatabaseStats().then(res => setTables(res.data));
     }
   };
 
@@ -252,16 +258,7 @@ function DatabaseSettings() {
             <span className="px-2 py-0.5 rounded-full" style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: "0.65rem", fontWeight: 700 }}>主要資料源</span>
           </div>
         </div>
-        {[
-          { name: "categories",        desc: "商品類別維度表 · id, name, description",                                                                    count: "8 筆",  fk: "" },
-          { name: "suppliers",         desc: "供應商資料表 · id, name, contact_name, phone, email, address",                                              count: "10 筆", fk: "" },
-          { name: "inventory",         desc: "商���庫存主表 · barcode, name, original_price, dynamic_price, current_stock, safety_stock, arrival/exp_date", count: "15 筆", fk: "FK→categories, FK→suppliers" },
-          { name: "transactions",      desc: "交易主單表 · total_amount, payment_method",                                                                   count: "動態",  fk: "FK→auth.users" },
-          { name: "transaction_items", desc: "交易明細表 · quantity, unit_price, subtotal(GENERATED ALWAYS)",                                               count: "動態",  fk: "FK→transactions, FK→inventory" },
-          { name: "alerts",            desc: "統一警示表（Realtime 推播）· alert_type, severity, status, auto_action",                                      count: "動態",  fk: "FK→inventory" },
-          { name: "edge_logs",         desc: "YOLOv8 邊緣數據 · camera_id, log_type, numeric_value, json_features",                                        count: "動態",  fk: "" },
-          { name: "ml_forecasts",      desc: "FastAPI ML 銷量預測 · forecast_date, forecast_quantity, confidence_score (UNIQUE 防重複)",                    count: "動態",  fk: "FK→inventory" },
-        ].map((item, i, arr) => (
+        {tables.length === 0 ? <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-indigo-500" /></div> : tables.map((item, i, arr) => (
           <div key={item.name} className="flex items-start justify-between px-4 py-3" style={{ borderBottom: i < arr.length - 1 ? "1px solid #F1F5F9" : "none" }}>
             <div className="flex items-start gap-2 min-w-0">
               <span className="px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0" style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: "0.6rem", fontWeight: 700 }}>PG</span>
@@ -271,7 +268,7 @@ function DatabaseSettings() {
                 <p style={{ color: "#64748B", fontSize: "0.68rem", marginTop: "2px", lineHeight: 1.4 }}>{item.desc}</p>
               </div>
             </div>
-            <span className="px-2 py-0.5 rounded-full flex-shrink-0 ml-3" style={{ background: "#F1F5F9", color: "#64748B", fontSize: "0.65rem", fontWeight: 600, whiteSpace: "nowrap" }}>{item.count}</span>
+            <span className="px-2 py-0.5 rounded-full flex-shrink-0 ml-3" style={{ background: "#F1F5F9", color: "#4F46E5", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap" }}>{item.count} 筆</span>
           </div>
         ))}
       </div>

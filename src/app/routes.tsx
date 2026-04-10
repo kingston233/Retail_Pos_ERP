@@ -9,6 +9,7 @@ import { AlertsPage } from "./pages/AlertsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TransactionsPage } from "./pages/TransactionsPage";
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { index: true, Component: () => <Navigate to="/dashboard" replace /> },
       { path: "dashboard", Component: DashboardPage },
       { path: "pos", Component: POSPage },
+      { path: "transactions", Component: TransactionsPage },
       { path: "inventory", Component: InventoryPage },
       { path: "alerts", Component: AlertsPage },
       { path: "analytics", Component: AnalyticsPage },

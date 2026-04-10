@@ -367,6 +367,34 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Low Stock Items List */}
+      {kpi && (kpi as any).low_stock_items?.length > 0 && (
+        <div className="mt-5 rounded-xl p-5 border" style={{ background: "#FFFFFF", borderColor: "#FECACA", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+          <div className="flex items-center gap-2 mb-4">
+            <AlertTriangle size={18} style={{ color: "#DC2626" }} />
+            <h3 style={{ color: "#1E293B", fontSize: "0.95rem", fontWeight: 700 }}>需立即補貨商品清單</h3>
+            <span className="px-2 py-0.5 rounded-full ml-2" style={{ background: "#FEF2F2", color: "#DC2626", fontSize: "0.75rem", fontWeight: 700 }}>
+              {(kpi as any).low_stock_critical} 項緊急
+            </span>
+          </div>
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
+            {(kpi as any).low_stock_items.map((item: any) => (
+              <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border" style={{ borderColor: item.current_stock === 0 ? "#FECACA" : "#FDE68A", background: item.current_stock === 0 ? "#FEF2F2" : "#FFFBEB" }}>
+                <div>
+                  <div style={{ color: "#1E293B", fontSize: "0.82rem", fontWeight: 700 }}>{item.name}</div>
+                  <div style={{ color: "#64748B", fontSize: "0.7rem", marginTop: "2px" }}>{item.barcode}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ color: item.current_stock === 0 ? "#DC2626" : "#D97706", fontSize: "0.9rem", fontWeight: 800 }}>{item.current_stock}</div>
+                  <div style={{ color: "#94A3B8", fontSize: "0.65rem" }}>/ {item.safety_stock} 警示值</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
