@@ -1,4 +1,4 @@
-# 開發紀錄：儀表板即時數據與資料庫設定升級
+n# 開發紀錄：儀表板即時數據與資料庫設定升級
 
 ## 📅 日期：2026-04-10
 ## 🚀 專案模組：RetailAI Dashboard (`/dashboard`) & Settings (`/settings`)
