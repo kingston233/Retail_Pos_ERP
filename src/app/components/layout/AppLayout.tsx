@@ -11,6 +11,18 @@ export function AppLayout() {
   const { user, isLoading } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setMobileSidebarOpen(false);
+    };
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
 
   useEffect(() => {
     // 訂閱 PostgreSQL 的 alerts 表 INSERT 事件
@@ -51,11 +63,24 @@ export function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#F1F5F9" }}>
       <Toaster position="bottom-right" expand={true} richColors />
+
+      {/* Mobile backdrop */}
+      {isMobile && mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <Sidebar
-        collapsed={sidebarCollapsed}
+        collapsed={isMobile ? false : sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         notificationCount={3}
+        isMobile={isMobile}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
 
       {/* Main content */}
@@ -63,6 +88,8 @@ export function AppLayout() {
         <TopBar
           onNotificationClick={() => setNotificationOpen(true)}
           notificationCount={3}
+          isMobile={isMobile}
+          onMobileMenuToggle={() => setMobileSidebarOpen(!mobileSidebarOpen)}
         />
         <main className="flex-1 overflow-y-auto">
           <Outlet />
