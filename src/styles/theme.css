@@ -1,6 +1,7 @@
 @custom-variant dark (&:is(.dark *));
 
-:root {
+:root,
+[data-theme="light"] {
   --font-size: 15px;
 
   /* RetailAI Brand Colors */
@@ -69,7 +70,8 @@
   --sidebar-ring: #818CF8;
 }
 
-.dark {
+.dark,
+[data-theme="dark"] {
   --background: #0F172A;
   --foreground: #F1F5F9;
   --card: #1E293B;

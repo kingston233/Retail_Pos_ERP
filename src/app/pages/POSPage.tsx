@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Search, Barcode, Plus, Minus, Trash2, ShoppingCart,
   CreditCard, Banknote, Smartphone, Tag, CheckCircle,
-  Zap, ChevronDown, Receipt, Loader2
+  Zap, ChevronDown, Receipt, Loader2, X, Camera
 } from "lucide-react";
+import { Html5Qrcode } from "html5-qrcode";
 import * as api from "../lib/api";
 
 interface CartItem {
@@ -26,7 +27,126 @@ const paymentMethods = [
 
 const paymentLabels: Record<string, string> = { cash: "現金", card: "信用卡", easycard: "悠遊卡", linepay: "Line Pay" };
 
+const SCANNER_ID = "html5-barcode-reader";
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 1024);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
+
+function BarcodeScanner({ onScan, onClose }: { onScan: (code: string) => void; onClose: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState("正在啟動相機...");
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+
+  useEffect(() => {
+    let running = false;
+    const scanner = new Html5Qrcode(SCANNER_ID);
+
+    const onSuccess = (decodedText: string) => {
+      if (!running) return;
+      running = false;
+      scanner.stop().catch(() => {});
+      onScanRef.current(decodedText);
+    };
+
+    const config = { fps: 10, qrbox: { width: 260, height: 130 } };
+
+    const tryStart = async () => {
+      // Try rear camera first, then front, then any available device
+      const attempts: (() => Promise<void>)[] = [
+        () => scanner.start({ facingMode: "environment" }, config, onSuccess, undefined),
+        () => scanner.start({ facingMode: "user" }, config, onSuccess, undefined),
+      ];
+
+      // Also try by deviceId if enumerate is available
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === "videoinput");
+        for (const device of videoDevices) {
+          attempts.push(() => scanner.start({ deviceId: { exact: device.deviceId } }, config, onSuccess, undefined));
+        }
+      } catch {
+        // enumerateDevices not available, skip
+      }
+
+      let lastError: unknown;
+      for (const attempt of attempts) {
+        try {
+          await attempt();
+          running = true;
+          setHint("將條碼對準掃描框");
+          return;
+        } catch (err) {
+          lastError = err;
+          // Scanner may be in bad state after failure; create fresh instance isn't possible here,
+          // but we can try the next camera option
+          try { await scanner.stop(); } catch { /* ignore */ }
+        }
+      }
+
+      const msg = lastError instanceof Error ? lastError.message : String(lastError);
+      setError("無法存取相機，請確認已授予相機權限且沒有其他應用程式正在使用相機。\n錯誤：" + msg);
+    };
+
+    tryStart();
+
+    return () => {
+      if (running) {
+        running = false;
+        scanner.stop().catch(() => {});
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.75)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "#FFFFFF", borderRadius: "16px", padding: "24px", width: "340px", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Camera size={18} style={{ color: "#4F46E5" }} />
+            <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#1E293B" }}>掃描條碼</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#94A3B8", display: "flex" }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {error ? (
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "8px", padding: "12px", color: "#DC2626", fontSize: "0.8rem", textAlign: "center", whiteSpace: "pre-line" }}>
+            {error}
+          </div>
+        ) : (
+          <>
+            <div id={SCANNER_ID} style={{ width: "100%", borderRadius: "8px", overflow: "hidden", background: "#000" }} />
+            <p style={{ color: "#64748B", fontSize: "0.75rem", textAlign: "center", marginTop: "10px" }}>{hint}</p>
+          </>
+        )}
+
+        <div style={{ marginTop: "12px", background: "#F8FAFC", borderRadius: "8px", padding: "8px 12px" }}>
+          <p style={{ color: "#475569", fontSize: "0.72rem", fontWeight: 600, marginBottom: "2px" }}>範例商品</p>
+          <p style={{ color: "#64748B", fontSize: "0.7rem" }}>統一鮮奶 (936ml) — <code style={{ color: "#4F46E5" }}>4711233010027</code></p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function POSPage() {
+  const isMobile = useIsMobile();
+  const [mobileTab, setMobileTab] = useState<"products" | "cart">("products");
   const [productCatalog, setProductCatalog] = useState<CartItem[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -36,6 +156,8 @@ export function POSPage() {
   const [cashReceived, setCashReceived] = useState("");
   const [checkoutDone, setCheckoutDone] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [lastScanned, setLastScanned] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -100,6 +222,19 @@ export function POSPage() {
     });
   };
 
+  const handleScanned = useCallback((code: string) => {
+    setShowScanner(false);
+    setScanning(false);
+    const product = productCatalog.find((p) => p.barcode === code);
+    if (product) {
+      addToCart(product);
+      setLastScanned(product.name);
+      setTimeout(() => setLastScanned(null), 3000);
+    } else {
+      setSearch(code);
+    }
+  }, [productCatalog]);
+
   const updateQty = (id: string, delta: number) => {
     setCart((prev) => prev.map((i) => i.id === id ? { ...i, qty: i.qty + delta } : i).filter((i) => i.qty > 0));
   };
@@ -154,10 +289,15 @@ export function POSPage() {
     );
   }
 
+  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+
   return (
-    <div className="flex h-full" style={{ background: "#F1F5F9", overflow: "hidden" }}>
+    <div className="flex h-full" style={{ background: "#F1F5F9", overflow: "hidden", flexDirection: isMobile ? "column" : "row" }}>
       {/* Left: Product Search + Grid */}
-      <div className="flex flex-col flex-1 min-w-0 p-4" style={{ overflow: "hidden" }}>
+      <div
+        className="flex flex-col flex-1 min-w-0 p-4"
+        style={{ overflow: "hidden", display: isMobile && mobileTab === "cart" ? "none" : "flex", paddingBottom: isMobile ? "72px" : "16px" }}
+      >
         {/* Scan / Search Bar */}
         <div className="flex gap-3 mb-3">
           <div className="flex items-center gap-2 rounded-xl px-4 border flex-1" style={{ height: "46px", background: "#FFFFFF", borderColor: "#E2E8F0" }}>
@@ -175,11 +315,11 @@ export function POSPage() {
           </div>
           <button
             className="flex items-center gap-2 rounded-xl px-4 border transition-all"
-            style={{ height: "46px", background: scanning ? "#EEF2FF" : "#FFFFFF", borderColor: scanning ? "#4F46E5" : "#E2E8F0", color: scanning ? "#4F46E5" : "#64748B", cursor: "pointer", fontSize: "0.82rem", fontWeight: 500 }}
-            onClick={() => setScanning(!scanning)}
+            style={{ height: "46px", background: showScanner ? "#EEF2FF" : "#FFFFFF", borderColor: showScanner ? "#4F46E5" : "#E2E8F0", color: showScanner ? "#4F46E5" : "#64748B", cursor: "pointer", fontSize: "0.82rem", fontWeight: 500 }}
+            onClick={() => { setShowScanner(true); setScanning(true); }}
           >
             <Zap size={15} />
-            {scanning ? "掃描中..." : "啟用掃描"}
+            啟用掃描
           </button>
         </div>
 
@@ -251,15 +391,33 @@ export function POSPage() {
           )}
       </div>
 
+      {/* Barcode scanner modal */}
+      {showScanner && (
+        <BarcodeScanner
+          onScan={handleScanned}
+          onClose={() => { setShowScanner(false); setScanning(false); }}
+        />
+      )}
+
+      {/* Scan success toast */}
+      {lastScanned && (
+        <div style={{ position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)", background: "#059669", color: "#fff", borderRadius: "10px", padding: "10px 20px", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 4px 16px rgba(5,150,105,0.4)", zIndex: 200 }}>
+          <CheckCircle size={16} />
+          已加入購物車：{lastScanned}
+        </div>
+      )}
+
       {/* Right: Cart + Checkout */}
       <div
         className="flex flex-col border-l"
         style={{
-          width: "380px",
+          width: isMobile ? "100%" : "380px",
           flexShrink: 0,
           background: "#FFFFFF",
           borderColor: "#E2E8F0",
           overflow: "hidden",
+          display: isMobile && mobileTab === "products" ? "none" : "flex",
+          paddingBottom: isMobile ? "72px" : "0",
         }}
       >
         {/* Cart header */}
@@ -547,6 +705,54 @@ export function POSPage() {
           </button>
         </div>
       </div>
+
+      {/* Mobile bottom tab bar */}
+      {isMobile && (
+        <div
+          style={{
+            position: "fixed", bottom: 0, left: 0, right: 0, height: "60px",
+            background: "#FFFFFF", borderTop: "1px solid #E2E8F0",
+            display: "flex", zIndex: 50,
+            boxShadow: "0 -2px 12px rgba(0,0,0,0.08)",
+          }}
+        >
+          <button
+            onClick={() => setMobileTab("products")}
+            style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px",
+              background: "none", border: "none", cursor: "pointer",
+              color: mobileTab === "products" ? "#4F46E5" : "#94A3B8",
+              borderTop: mobileTab === "products" ? "2px solid #4F46E5" : "2px solid transparent",
+            }}
+          >
+            <ShoppingCart size={20} />
+            <span style={{ fontSize: "0.68rem", fontWeight: mobileTab === "products" ? 700 : 400 }}>商品</span>
+          </button>
+          <button
+            onClick={() => setMobileTab("cart")}
+            style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px",
+              background: "none", border: "none", cursor: "pointer", position: "relative",
+              color: mobileTab === "cart" ? "#4F46E5" : "#94A3B8",
+              borderTop: mobileTab === "cart" ? "2px solid #4F46E5" : "2px solid transparent",
+            }}
+          >
+            <div style={{ position: "relative" }}>
+              <Receipt size={20} />
+              {cartCount > 0 && (
+                <span style={{
+                  position: "absolute", top: "-6px", right: "-8px",
+                  background: "#DC2626", color: "#fff", borderRadius: "999px",
+                  fontSize: "0.58rem", fontWeight: 700, padding: "0 4px", minWidth: "16px", textAlign: "center",
+                }}>
+                  {cartCount}
+                </span>
+              )}
+            </div>
+            <span style={{ fontSize: "0.68rem", fontWeight: mobileTab === "cart" ? 700 : 400 }}>購物車</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,16 +1,16 @@
 import { useState, useEffect } from "react";
 import {
   Settings, Store, Bell, Shield, Cpu, Users, ChevronRight,
-  Save, Globe, Mail, Smartphone, Database, CheckCircle, Loader2, AlertTriangle
+  Save, Mail, Smartphone, Database, Loader2, CheckCircle, AlertTriangle
 } from "lucide-react";
 import * as api from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
 const menuItems = [
   { id: "store", label: "門市資訊", icon: Store },
   { id: "notifications", label: "通知設定", icon: Bell },
   { id: "ai", label: "AI 模型設定", icon: Cpu },
   { id: "security", label: "帳號安全", icon: Shield },
-  { id: "team", label: "團隊成員", icon: Users },
   { id: "database", label: "資料庫管理", icon: Database },
 ];
 
@@ -198,238 +198,106 @@ function AISettings() {
   );
 }
 
-function DatabaseSettings() {
-  const [migrating, setMigrating] = useState(false);
-  const [seeding,   setSeeding]   = useState(false);
-  const [migrateResult, setMigrateResult] = useState<api.MigrationResult[] | null>(null);
-  const [migrateMsg,    setMigrateMsg]    = useState<{ success: boolean; message: string; passed?: number; total?: number } | null>(null);
-  const [seedResult,    setSeedResult]    = useState<{ success: boolean; message: string; summary?: Record<string, number> } | null>(null);
-  const [expandSteps,   setExpandSteps]   = useState(false);
-  const [tables, setTables] = useState<any[]>([]);
-  
-  useEffect(() => {
-    api.getDatabaseStats().then(res => setTables(res.data)).catch(console.error);
-  }, []);
+function AccountSecurity() {
+  const { user, profile } = useAuth();
+  const [name, setName] = useState(profile?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const handleMigrate = async () => {
-    if (!confirm("確定要執行 PostgreSQL 資料庫遷移？這將重建所有資料表與函數（現有資料將被清除）。")) return;
-    setMigrating(true);
-    setMigrateResult(null);
-    setMigrateMsg(null);
-    setExpandSteps(false);
-    try {
-      const res = await api.runMigration();
-      setMigrateResult(res.results);
-      setMigrateMsg({ success: res.success, message: res.message, passed: res.passed, total: res.total });
-    } catch (err: any) {
-      setMigrateMsg({ success: false, message: `連線失敗：${err.message}` });
-    } finally {
-      setMigrating(false);
-      api.getDatabaseStats().then(res => setTables(res.data));
-    }
+  const show = (type: "success" | "error", text: string) => {
+    setMsg({ type, text });
+    setTimeout(() => setMsg(null), 4000);
   };
 
-  const handleSeed = async () => {
-    if (!confirm("確定要寫入種子資料？這將覆蓋現有同名資料。")) return;
-    setSeeding(true);
-    setSeedResult(null);
+  const handleSaveProfile = async () => {
+    setSaving(true);
     try {
-      const res = await api.seedDatabase();
-      setSeedResult({ success: true, message: res.message, summary: res.summary });
-    } catch (err: any) {
-      setSeedResult({ success: false, message: err.message });
-    } finally {
-      setSeeding(false);
-    }
+      const { supabase } = await import("../../lib/supabase");
+      if (email !== user?.email) {
+        const { error } = await supabase.auth.updateUser({ email });
+        if (error) { show("error", error.message); setSaving(false); return; }
+      }
+      const { error: pe } = await supabase.from("profiles").update({ name }).eq("id", user!.id);
+      if (pe) { show("error", pe.message); } else { show("success", "資料已更新！如更改郵件請檢查信符1"); }
+    } finally { setSaving(false); }
   };
+
+  const handleChangePw = async () => {
+    if (newPw !== confirmPw) { show("error", "新密碼與確認密碼不一致"); return; }
+    if (newPw.length < 6) { show("error", "密碼至少 6 個字元"); return; }
+    setSaving(true);
+    try {
+      const { supabase } = await import("../../lib/supabase");
+      const { error } = await supabase.auth.updateUser({ password: newPw });
+      if (error) { show("error", error.message); } else { show("success", "密碼已更新！"); setCurrentPw(""); setNewPw(""); setConfirmPw(""); }
+    } finally { setSaving(false); }
+  };
+
+  const inputStyle = { height: "38px", borderColor: "#E2E8F0", fontSize: "0.82rem", color: "#1E293B", outline: "none", background: "#FAFAFA", borderRadius: "8px", padding: "0 12px", width: "100%", border: "1px solid #E2E8F0" };
+  const labelStyle = { color: "#475569", fontSize: "0.75rem", fontWeight: 600 as const, display: "block" as const, marginBottom: "6px" };
 
   return (
     <div>
-      <h2 style={{ color: "#1E293B", fontSize: "1rem", fontWeight: 700, marginBottom: "4px" }}>資料庫管理</h2>
-      <p style={{ color: "#64748B", fontSize: "0.78rem", marginBottom: "24px" }}>
-        管理 PostgreSQL 關聯式資料庫與 KV Store，建置資料表、函數、Trigger 與 RLS 政策
-      </p>
+      <h2 style={{ color: "#1E293B", fontSize: "1rem", fontWeight: 700, marginBottom: "4px" }}>帳號安全</h2>
+      <p style={{ color: "#64748B", fontSize: "0.78rem", marginBottom: "24px" }}>修改您的姓名、電子郵件與登入密碼</p>
 
-      {/* PostgreSQL Schema 說明 */}
-      <div className="rounded-xl border overflow-hidden mb-5" style={{ borderColor: "#E2E8F0" }}>
-        <div className="px-4 py-3 border-b" style={{ background: "#F8FAFC", borderColor: "#E2E8F0" }}>
-          <div className="flex items-center gap-3">
-            <span style={{ color: "#1E293B", fontSize: "0.85rem", fontWeight: 700 }}>PostgreSQL 關聯式資料庫（3NF）</span>
-            <span className="px-2 py-0.5 rounded-full" style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: "0.65rem", fontWeight: 700 }}>主要資料源</span>
+      {msg && (
+        <div className="mb-4 px-4 py-3 rounded-lg" style={{ background: msg.type === "success" ? "#F0FDF4" : "#FEF2F2", border: `1px solid ${msg.type === "success" ? "#BBF7D0" : "#FECACA"}`, color: msg.type === "success" ? "#059669" : "#DC2626", fontSize: "0.82rem", fontWeight: 600 }}>
+          {msg.text}
+        </div>
+      )}
+
+      {/* Profile info */}
+      <div className="rounded-xl border p-5 mb-5" style={{ borderColor: "#E2E8F0" }}>
+        <h3 style={{ color: "#1E293B", fontSize: "0.85rem", fontWeight: 700, marginBottom: "16px" }}>基本資料</h3>
+        <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <div>
+            <label style={labelStyle}>姓名</label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder="輸入姓名" />
+          </div>
+          <div>
+            <label style={labelStyle}>電子郵件</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} placeholder="輸入郵件" type="email" />
           </div>
         </div>
-        {tables.length === 0 ? <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-indigo-500" /></div> : tables.map((item, i, arr) => (
-          <div key={item.name} className="flex items-start justify-between px-4 py-3" style={{ borderBottom: i < arr.length - 1 ? "1px solid #F1F5F9" : "none" }}>
-            <div className="flex items-start gap-2 min-w-0">
-              <span className="px-1.5 py-0.5 rounded mt-0.5 flex-shrink-0" style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: "0.6rem", fontWeight: 700 }}>PG</span>
-              <div className="min-w-0">
-                <code style={{ color: "#1E293B", fontSize: "0.75rem", fontWeight: 700 }}>{item.name}</code>
-                {item.fk && <span className="ml-2 px-1.5 py-0.5 rounded" style={{ background: "#FEF3C7", color: "#92400E", fontSize: "0.58rem", fontWeight: 600 }}>{item.fk}</span>}
-                <p style={{ color: "#64748B", fontSize: "0.68rem", marginTop: "2px", lineHeight: 1.4 }}>{item.desc}</p>
-              </div>
-            </div>
-            <span className="px-2 py-0.5 rounded-full flex-shrink-0 ml-3" style={{ background: "#F1F5F9", color: "#4F46E5", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap" }}>{item.count} 筆</span>
-          </div>
-        ))}
+        <div className="flex justify-end mt-4">
+          <button onClick={handleSaveProfile} disabled={saving} style={{ background: "#4F46E5", color: "#fff", border: "none", borderRadius: "8px", padding: "8px 20px", fontSize: "0.82rem", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+            {saving ? "儲存中..." : "儲存變更"}
+          </button>
+        </div>
       </div>
 
-      {/* KV Store Schema 說明 */}
-      <div className="rounded-xl border overflow-hidden mb-6" style={{ borderColor: "#E2E8F0" }}>
-        <div className="px-4 py-3 border-b" style={{ background: "#F8FAFC", borderColor: "#E2E8F0" }}>
-          <div className="flex items-center gap-3">
-            <span style={{ color: "#1E293B", fontSize: "0.85rem", fontWeight: 700 }}>KV Store（備援 / 非關聯資料）</span>
-            <span className="px-2 py-0.5 rounded-full" style={{ background: "#F0FDF4", color: "#059669", fontSize: "0.65rem", fontWeight: 700 }}>自動降級</span>
+      {/* Change password */}
+      <div className="rounded-xl border p-5" style={{ borderColor: "#E2E8F0" }}>
+        <h3 style={{ color: "#1E293B", fontSize: "0.85rem", fontWeight: 700, marginBottom: "16px" }}>變更密碼</h3>
+        <div className="grid gap-4">
+          <div>
+            <label style={labelStyle}>新密碼</label>
+            <input value={newPw} onChange={e => setNewPw(e.target.value)} style={inputStyle} type="password" placeholder="輸入新密碼（至少 6 位）" />
+          </div>
+          <div>
+            <label style={labelStyle}>確認新密碼</label>
+            <input value={confirmPw} onChange={e => setConfirmPw(e.target.value)} style={inputStyle} type="password" placeholder="再輸入一次新密碼" />
           </div>
         </div>
-        {[
-          { prefix: "customer:{id}",             desc: "顧客資料（等級、消費次數、累計金額）", count: "12 筆" },
-          { prefix: "kpi:daily:{date}",           desc: "每日 KPI 快照（PostgreSQL 有資料時自動改用即時計算）", count: "1 筆" },
-          { prefix: "kpi:hourly:{date}:{hour}",   desc: "每小時客流量（YOLOv8 edge_logs 備援）", count: "9 筆" },
-          { prefix: "kpi:payment:{date}",         desc: "付款方式分佈快照", count: "1 筆" },
-          { prefix: "forecast:{date}",            desc: "ML 七日銷量預測快照（ml_forecasts 備援）", count: "1 筆" },
-          { prefix: "analytics:monthly:{ym}",     desc: "月度銷售分析快照", count: "7 筆" },
-          { prefix: "analytics:visit_freq",       desc: "顧客消費頻次分佈", count: "1 筆" },
-        ].map((item, i, arr) => (
-          <div key={item.prefix} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: i < arr.length - 1 ? "1px solid #F1F5F9" : "none" }}>
-            <div className="min-w-0">
-              <code style={{ color: "#059669", fontSize: "0.72rem", fontWeight: 600, background: "#F0FDF4", padding: "2px 6px", borderRadius: "4px" }}>{item.prefix}</code>
-              <p style={{ color: "#64748B", fontSize: "0.68rem", marginTop: "3px" }}>{item.desc}</p>
-            </div>
-            <span className="px-2 py-0.5 rounded-full flex-shrink-0 ml-3" style={{ background: "#F1F5F9", color: "#64748B", fontSize: "0.65rem", fontWeight: 600, whiteSpace: "nowrap" }}>{item.count}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* ── STEP 1：PostgreSQL 遷移 ── */}
-      <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: "#C7D2FE" }}>
-        <div className="px-5 py-4" style={{ background: "linear-gradient(135deg, #EEF2FF, #F3F0FF)" }}>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span style={{ background: "#4F46E5", color: "#FFF", borderRadius: "50%", width: "20px", height: "20px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.68rem", fontWeight: 700, flexShrink: 0 }}>1</span>
-                <span style={{ color: "#1E293B", fontSize: "0.88rem", fontWeight: 700 }}>執行 PostgreSQL 資料庫遷移</span>
-              </div>
-              <p style={{ color: "#4338CA", fontSize: "0.72rem", lineHeight: 1.5, paddingLeft: "28px" }}>
-                建立所有資料表（19 個步驟）、索引、RPC 函數 <code style={{ background: "#E0E7FF", padding: "0 3px", borderRadius: "3px" }}>process_checkout</code>、
-                低庫存 Trigger、RLS 政策，並寫入初始種子資料（categories / suppliers / inventory / alerts）。
-                <strong style={{ color: "#DC2626" }}> ⚠ 會清除現有同名資料表。</strong>
-              </p>
-            </div>
-            <button
-              onClick={handleMigrate}
-              disabled={migrating}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl flex-shrink-0"
-              style={{ background: migrating ? "#C7D2FE" : "#4F46E5", color: "#FFF", border: "none", cursor: migrating ? "not-allowed" : "pointer", fontSize: "0.82rem", fontWeight: 700, whiteSpace: "nowrap", minWidth: "140px", justifyContent: "center" }}
-            >
-              {migrating ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
-              {migrating ? "遷移中..." : "執行 SQL 遷移"}
-            </button>
-          </div>
+        <div className="flex justify-end mt-4">
+          <button onClick={handleChangePw} disabled={saving || !newPw} style={{ background: newPw ? "#DC2626" : "#E2E8F0", color: newPw ? "#fff" : "#94A3B8", border: "none", borderRadius: "8px", padding: "8px 20px", fontSize: "0.82rem", fontWeight: 600, cursor: (saving || !newPw) ? "not-allowed" : "pointer" }}>
+            {saving ? "更新中..." : "變更密碼"}
+          </button>
         </div>
-
-        {/* 遷移結果 */}
-        {migrateMsg && (
-          <div className="px-5 py-4 border-t" style={{ borderColor: "#C7D2FE", background: "#FAFBFF" }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                {migrateMsg.success
-                  ? <CheckCircle size={16} style={{ color: "#059669" }} />
-                  : <AlertTriangle size={16} style={{ color: "#DC2626" }} />}
-                <span style={{ color: migrateMsg.success ? "#059669" : "#DC2626", fontWeight: 700, fontSize: "0.82rem" }}>
-                  {migrateMsg.message}
-                </span>
-              </div>
-              {migrateResult && (
-                <button
-                  onClick={() => setExpandSteps(!expandSteps)}
-                  style={{ color: "#4F46E5", fontSize: "0.72rem", background: "none", border: "none", cursor: "pointer" }}
-                >
-                  {expandSteps ? "收起" : `查看詳細 (${migrateMsg.passed}/${migrateMsg.total})`}
-                </button>
-              )}
-            </div>
-
-            {/* 步驟摘要：永遠顯示失敗的步驟 */}
-            {migrateResult && (
-              <div>
-                {/* 失敗項目（永遠顯示） */}
-                {migrateResult.filter(r => r.status === "error").map((r) => (
-                  <div key={r.step} className="flex items-start gap-2 mb-1.5 p-2 rounded-lg" style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
-                    <span style={{ color: "#DC2626", fontSize: "0.75rem", fontWeight: 700, flexShrink: 0 }}>✗</span>
-                    <div>
-                      <div style={{ color: "#DC2626", fontSize: "0.72rem", fontWeight: 700 }}>{r.step}</div>
-                      <div style={{ color: "#B91C1C", fontSize: "0.65rem", fontFamily: "monospace", marginTop: "2px", wordBreak: "break-all" }}>{r.message}</div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* 展開時顯示所有步驟 */}
-                {expandSteps && (
-                  <div className="rounded-lg overflow-hidden border mt-2" style={{ borderColor: "#E2E8F0" }}>
-                    {migrateResult.map((r, i) => (
-                      <div key={r.step} className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: i < migrateResult.length - 1 ? "1px solid #F1F5F9" : "none", background: r.status === "ok" ? "#FAFFFE" : "#FFF9F9" }}>
-                        <span style={{ color: r.status === "ok" ? "#059669" : "#DC2626", fontSize: "0.72rem", fontWeight: 700, width: "14px", flexShrink: 0 }}>
-                          {r.status === "ok" ? "✓" : "✗"}
-                        </span>
-                        <span style={{ color: r.status === "ok" ? "#374151" : "#DC2626", fontSize: "0.72rem" }}>{r.step}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── STEP 2：KV 種子資料 ── */}
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#A7F3D0" }}>
-        <div className="px-5 py-4" style={{ background: "linear-gradient(135deg, #F0FDF4, #ECFDF5)" }}>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span style={{ background: "#059669", color: "#FFF", borderRadius: "50%", width: "20px", height: "20px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.68rem", fontWeight: 700, flexShrink: 0 }}>2</span>
-                <span style={{ color: "#1E293B", fontSize: "0.88rem", fontWeight: 700 }}>寫入 KV 種子資料（顧客 / 儀表板 / 分析）</span>
-              </div>
-              <p style={{ color: "#065F46", fontSize: "0.72rem", lineHeight: 1.5, paddingLeft: "28px" }}>
-                將顧客資料、每日 KPI、小時客流、付款分佈、ML 預測快照、月度/週間分析等備援資料寫入 KV Store。
-                PostgreSQL 遷移完成後建議也執行此步驟。
-              </p>
-            </div>
-            <button
-              onClick={handleSeed}
-              disabled={seeding}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl flex-shrink-0"
-              style={{ background: seeding ? "#A7F3D0" : "#059669", color: "#FFF", border: "none", cursor: seeding ? "not-allowed" : "pointer", fontSize: "0.82rem", fontWeight: 700, whiteSpace: "nowrap", minWidth: "140px", justifyContent: "center" }}
-            >
-              {seeding ? <Loader2 size={15} className="animate-spin" /> : <Database size={15} />}
-              {seeding ? "寫入中..." : "寫入 KV 資���"}
-            </button>
-          </div>
-        </div>
-
-        {seedResult && (
-          <div className="px-5 py-4 border-t" style={{ borderColor: "#A7F3D0", background: "#FAFFFE" }}>
-            <div className="flex items-center gap-2 mb-3">
-              {seedResult.success ? <CheckCircle size={15} style={{ color: "#059669" }} /> : <AlertTriangle size={15} style={{ color: "#DC2626" }} />}
-              <span style={{ color: seedResult.success ? "#059669" : "#DC2626", fontWeight: 700, fontSize: "0.78rem" }}>{seedResult.message}</span>
-            </div>
-            {seedResult.summary && (
-              <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-                {Object.entries(seedResult.summary).map(([k, v]) => (
-                  <div key={k} className="rounded-lg px-3 py-2 text-center border" style={{ background: "#FFF", borderColor: "#D1FAE5" }}>
-                    <div style={{ color: "#059669", fontSize: "1rem", fontWeight: 700 }}>{v}</div>
-                    <div style={{ color: "#64748B", fontSize: "0.62rem", marginTop: "1px" }}>{k.replace(/_/g, " ")}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
 }
+
+
+
+
+
 
 export function SettingsPage() {
   const [active, setActive] = useState("database");
@@ -439,7 +307,8 @@ export function SettingsPage() {
       case "store": return <StoreSettings />;
       case "notifications": return <NotificationSettings />;
       case "ai": return <AISettings />;
-      case "database": return <DatabaseSettings />;
+      case "security": return <AccountSecurity />;
+      
       default:
         return (
           <div className="flex flex-col items-center justify-center py-16" style={{ color: "#94A3B8" }}>

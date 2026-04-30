@@ -2,6 +2,7 @@ import { Bell, Search, ChevronDown, Sun, Moon, User, Settings, LogOut, Menu } fr
 import { useState } from "react";
 import { useLocation } from "react-router";
 import { useAuth } from "../../contexts/AuthContext";
+import { useTheme } from "../../contexts/ThemeContext";
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": { title: "營運儀表板", subtitle: "即時掌握店鋪營運狀況" },
@@ -23,9 +24,9 @@ interface TopBarProps {
 export function TopBar({ onNotificationClick, notificationCount = 3, isMobile = false, onMobileMenuToggle }: TopBarProps) {
   const location = useLocation();
   const { user, profile } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const pageInfo = pageTitles[location.pathname] || { title: "RetailAI", subtitle: "" };
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
 
   const roleNames: Record<number, string> = {
     0: "管理員 / 店長",
@@ -115,7 +116,7 @@ export function TopBar({ onNotificationClick, notificationCount = 3, isMobile = 
         {/* Dark mode toggle (desktop only) */}
         {!isMobile && (
           <button
-            onClick={() => setDarkMode(!darkMode)}
+            onClick={toggleTheme}
             className="flex items-center justify-center rounded-lg transition-colors"
             style={{
               width: "36px",
@@ -125,8 +126,9 @@ export function TopBar({ onNotificationClick, notificationCount = 3, isMobile = 
               color: "#64748B",
               cursor: "pointer",
             }}
+            title={theme === "dark" ? "切換淺色模式" : "切換深色模式"}
           >
-            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         )}
 

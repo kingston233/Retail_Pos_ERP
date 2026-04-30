@@ -3,3 +3,4 @@ dist
 .env
 .env.local
 create_admin.mjs
+.claude/
