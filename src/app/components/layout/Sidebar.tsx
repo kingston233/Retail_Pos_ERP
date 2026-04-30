@@ -27,9 +27,12 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   notificationCount?: number;
+  isMobile?: boolean;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, notificationCount = 3, isMobile = false, mobileOpen = false, onMobileClose }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, user } = useAuth();
@@ -111,6 +114,7 @@ export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarP
       <NavLink
         key={path}
         to={path}
+        onClick={() => isMobile && onMobileClose?.()}
         className="flex items-center gap-3 mx-2 mb-0.5 rounded-lg transition-all duration-150 relative"
         style={{
           padding: collapsed ? "10px 0" : indent ? "8px 12px 8px 32px" : "9px 12px",
@@ -214,6 +218,7 @@ export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarP
             <NavLink
               key={child.path}
               to={child.path}
+              onClick={() => isMobile && onMobileClose?.()}
               className="flex items-center gap-2 mx-2 mb-0.5 rounded-lg transition-all duration-150"
               style={{
                 padding: "7px 12px 7px 36px",
@@ -240,15 +245,31 @@ export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarP
     );
   };
 
-  return (
-    <aside
-      className="relative flex flex-col h-full transition-all duration-300 ease-in-out"
-      style={{
+  const mobileStyle: React.CSSProperties = isMobile
+    ? {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        height: "100%",
+        width: "240px",
+        zIndex: 50,
+        transform: mobileOpen ? "translateX(0)" : "translateX(-100%)",
+        transition: "transform 0.3s ease",
+        background: "#0F172A",
+        borderRight: "1px solid #1E293B",
+        flexShrink: 0,
+      }
+    : {
         width: collapsed ? "64px" : "240px",
         background: "#0F172A",
         borderRight: "1px solid #1E293B",
         flexShrink: 0,
-      }}
+      };
+
+  return (
+    <aside
+      className="relative flex flex-col h-full transition-all duration-300 ease-in-out"
+      style={mobileStyle}
     >
       {/* Logo */}
       <div
@@ -381,25 +402,27 @@ export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarP
         </button>
       </div>
 
-      {/* Collapse Toggle */}
-      <button
-        onClick={onToggle}
-        className="absolute flex items-center justify-center rounded-full border transition-all duration-200"
-        style={{
-          top: "76px",
-          right: "-12px",
-          width: "24px",
-          height: "24px",
-          background: "#1E293B",
-          borderColor: "#334155",
-          color: "#94A3B8",
-          zIndex: 10,
-          cursor: "pointer",
-        }}
-        aria-label={collapsed ? "展開側欄" : "收合側欄"}
-      >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-      </button>
+      {/* Collapse Toggle (desktop only) */}
+      {!isMobile && (
+        <button
+          onClick={onToggle}
+          className="absolute flex items-center justify-center rounded-full border transition-all duration-200"
+          style={{
+            top: "76px",
+            right: "-12px",
+            width: "24px",
+            height: "24px",
+            background: "#1E293B",
+            borderColor: "#334155",
+            color: "#94A3B8",
+            zIndex: 10,
+            cursor: "pointer",
+          }}
+          aria-label={collapsed ? "展開側欄" : "收合側欄"}
+        >
+          {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+        </button>
+      )}
     </aside>
   );
 }
