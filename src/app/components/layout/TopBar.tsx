@@ -1,6 +1,7 @@
 import { Bell, Search, ChevronDown, Sun, Moon, User, Settings, LogOut } from "lucide-react";
 import { useState } from "react";
 import { useLocation } from "react-router";
+import { useAuth } from "../../contexts/AuthContext";
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": { title: "營運儀表板", subtitle: "即時掌握店鋪營運狀況" },
@@ -19,9 +20,18 @@ interface TopBarProps {
 
 export function TopBar({ onNotificationClick, notificationCount = 3 }: TopBarProps) {
   const location = useLocation();
+  const { user, profile } = useAuth();
   const pageInfo = pageTitles[location.pathname] || { title: "RetailAI", subtitle: "" };
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+
+  const roleNames: Record<number, string> = {
+    0: "管理員 / 店長",
+    1: "一般店員",
+    2: "經理",
+  };
+  const roleName = profile?.role_code !== undefined ? roleNames[profile.role_code] : "未知";
+  const firstChar = profile?.name ? profile.name.charAt(0).toUpperCase() : "U";
 
   return (
     <header
@@ -152,11 +162,11 @@ export function TopBar({ onNotificationClick, notificationCount = 3 }: TopBarPro
                 fontWeight: 700,
               }}
             >
-              陳
+              {firstChar}
             </div>
             <div className="text-left" style={{ lineHeight: 1.2 }}>
-              <div style={{ color: "#1E293B", fontSize: "0.78rem", fontWeight: 600 }}>陳小明</div>
-              <div style={{ color: "#94A3B8", fontSize: "0.65rem" }}>店長</div>
+              <div style={{ color: "#1E293B", fontSize: "0.78rem", fontWeight: 600 }}>{profile?.name || "使用者"}</div>
+              <div style={{ color: "#94A3B8", fontSize: "0.65rem" }}>{roleName}</div>
             </div>
             <ChevronDown size={13} style={{ color: "#94A3B8", marginLeft: "2px" }} />
           </button>
@@ -174,8 +184,8 @@ export function TopBar({ onNotificationClick, notificationCount = 3 }: TopBarPro
               }}
             >
               <div className="px-3 py-2 border-b mb-1" style={{ borderColor: "#F1F5F9" }}>
-                <div style={{ color: "#1E293B", fontSize: "0.8rem", fontWeight: 600 }}>陳小明</div>
-                <div style={{ color: "#94A3B8", fontSize: "0.7rem" }}>manager@retailai.tw</div>
+                <div style={{ color: "#1E293B", fontSize: "0.8rem", fontWeight: 600 }}>{profile?.name || "使用者"}</div>
+                <div style={{ color: "#94A3B8", fontSize: "0.7rem", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.email || ""}</div>
               </div>
               {[
                 { icon: User, label: "個人資料" },
@@ -194,6 +204,10 @@ export function TopBar({ onNotificationClick, notificationCount = 3 }: TopBarPro
               ))}
               <div className="border-t mt-1 pt-1" style={{ borderColor: "#F1F5F9" }}>
                 <button
+                  onClick={async () => {
+                    const { supabase } = await import("../../../lib/supabase");
+                    await supabase.auth.signOut();
+                  }}
                   className="flex items-center gap-2 w-full px-3 py-2 transition-colors"
                   style={{ color: "#DC2626", fontSize: "0.8rem", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#FEF2F2")}

@@ -10,6 +10,9 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
+import { BehaviorPage } from "./pages/BehaviorPage";
+import { QueuePage } from "./pages/QueuePage";
+import { ForecastPage } from "./pages/ForecastPage";
 
 export const router = createBrowserRouter([
   {
@@ -32,6 +35,9 @@ export const router = createBrowserRouter([
       { path: "alerts", Component: AlertsPage },
       { path: "analytics", Component: AnalyticsPage },
       { path: "customers", Component: CustomersPage },
+      { path: "behavior", Component: BehaviorPage },
+      { path: "queue", Component: QueuePage },
+      { path: "forecast", Component: ForecastPage },
       { path: "settings", Component: SettingsPage },
     ],
   },

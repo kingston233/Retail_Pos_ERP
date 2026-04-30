@@ -1,28 +1,46 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, Zap, User, Mail, Lock, Store, ArrowRight, Check } from "lucide-react";
+import { Eye, EyeOff, Zap, User, Mail, Lock, ArrowRight, Check, Briefcase } from "lucide-react";
+import { supabase } from "../../lib/supabase";
 
 export function RegisterPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const [form, setForm] = useState({
     name: "",
-    storeName: "",
     email: "",
     password: "",
     confirm: "",
-    plan: "starter",
+    role_code: 1,
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.password !== form.confirm) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      navigate("/dashboard");
-    }, 1400);
+    setErrorMsg("");
+    
+    const { error } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: {
+          name: form.name,
+          role_code: form.role_code,
+        }
+      }
+    });
+
+    setLoading(false);
+    if (error) {
+      setErrorMsg(error.message);
+    } else {
+      alert("註冊成功！請檢查您的信箱進行驗證，或直接登入。");
+      navigate("/login");
+    }
   };
 
   const passwordStrength = (p: string) => {
@@ -98,11 +116,10 @@ export function RegisterPage() {
           ].map((plan) => (
             <div
               key={plan.id}
-              onClick={() => setForm({ ...form, plan: plan.id })}
-              className="mb-3 p-4 rounded-xl border cursor-pointer transition-all"
+              className="mb-3 p-4 rounded-xl border transition-all"
               style={{
-                background: form.plan === plan.id ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
-                borderColor: form.plan === plan.id ? "#818CF8" : "#1E293B",
+                background: "rgba(255,255,255,0.03)",
+                borderColor: "#1E293B",
               }}
             >
               <div className="flex items-center justify-between mb-2">
@@ -142,6 +159,12 @@ export function RegisterPage() {
               加入 2,400+ 家使用 RetailAI 的零售商
             </p>
           </div>
+          
+          {errorMsg && (
+            <div className="mb-4 p-3 rounded-lg" style={{ background: "#FEF2F2", color: "#DC2626", fontSize: "0.85rem", border: "1px solid #F87171" }}>
+              {errorMsg}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit}>
             {/* Name */}
@@ -166,25 +189,26 @@ export function RegisterPage() {
               </div>
             </div>
 
-            {/* Store name */}
+            {/* Role Code */}
             <div className="mb-3.5">
               <label style={{ color: "#374151", fontSize: "0.8rem", fontWeight: 600, display: "block", marginBottom: "5px" }}>
-                店鋪名稱 <span style={{ color: "#DC2626" }}>*</span>
+                註冊身分 <span style={{ color: "#DC2626" }}>*</span>
               </label>
               <div
                 className="flex items-center gap-3 rounded-lg px-3 border"
                 style={{ height: "42px", background: "#FFFFFF", borderColor: "#D1D5DB" }}
               >
-                <Store size={15} style={{ color: "#9CA3AF" }} />
-                <input
-                  type="text"
-                  value={form.storeName}
-                  onChange={(e) => setForm({ ...form, storeName: e.target.value })}
-                  placeholder="您的店鋪名稱"
-                  required
+                <Briefcase size={15} style={{ color: "#9CA3AF" }} />
+                <select
+                  value={form.role_code}
+                  onChange={(e) => setForm({ ...form, role_code: parseInt(e.target.value) })}
                   className="flex-1 border-none outline-none bg-transparent"
-                  style={{ color: "#1E293B", fontSize: "0.85rem" }}
-                />
+                  style={{ color: "#1E293B", fontSize: "0.85rem", appearance: "none", cursor: "pointer" }}
+                >
+                  <option value={1}>一般店員</option>
+                  <option value={0}>管理員 / 店長</option>
+                  <option value={2}>經理</option>
+                </select>
               </div>
             </div>
 

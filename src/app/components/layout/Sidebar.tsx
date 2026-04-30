@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -14,7 +14,11 @@ import {
   LogOut,
   Store,
   Receipt,
+  Compass,
+  Activity,
+  TrendingUp,
 } from "lucide-react";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -37,6 +41,9 @@ const navItems = [
     items: [
       { path: "/analytics", label: "銷售分析", icon: BarChart2 },
       { path: "/customers", label: "顧客洞察", icon: Users },
+      { path: "/behavior", label: "顧客行為感知", icon: Compass },
+      { path: "/queue", label: "結帳區排隊監測", icon: Activity },
+      { path: "/forecast", label: "銷售預測與決策", icon: TrendingUp },
     ],
   },
   {
@@ -50,6 +57,23 @@ const navItems = [
 
 export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { profile, user } = useAuth();
+  
+  const roleCode = profile?.role_code ?? 1;
+
+  const filteredNavItems = navItems.map(group => {
+    if (roleCode === 1 && group.group === "智慧分析") return null;
+
+    if (roleCode === 2 && group.group === "智慧分析") {
+      return {
+        ...group,
+        items: group.items.filter(item => ["/analytics", "/customers"].includes(item.path))
+      };
+    }
+
+    return group;
+  }).filter(Boolean) as typeof navItems;
 
   return (
     <aside
@@ -115,7 +139,7 @@ export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarP
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3" style={{ overflowX: "hidden" }}>
-        {navItems.map((group) => (
+        {filteredNavItems.map((group) => (
           <div key={group.group} className="mb-1">
             {!collapsed && (
               <div
@@ -200,12 +224,17 @@ export function Sidebar({ collapsed, onToggle, notificationCount = 3 }: SidebarP
           {!collapsed && <span style={{ fontSize: "0.8rem" }}>說明與支援</span>}
         </button>
         <button
+          onClick={async () => {
+            const { supabase } = await import("../../../lib/supabase");
+            await supabase.auth.signOut();
+          }}
           className="flex items-center gap-3 w-full mx-2 rounded-lg transition-all duration-150"
           style={{
             padding: collapsed ? "9px 0" : "9px 12px",
             justifyContent: collapsed ? "center" : "flex-start",
             color: "#64748B",
             width: "calc(100% - 16px)",
+            cursor: "pointer",
           }}
           title={collapsed ? "登出" : undefined}
         >

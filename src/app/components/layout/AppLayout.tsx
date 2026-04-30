@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
-import { Outlet } from "react-router";
+import { Outlet, Navigate } from "react-router";
 import { Toaster, toast } from "sonner";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { NotificationPanel } from "./NotificationPanel";
 import { supabase } from "../../lib/api";
+import { useAuth } from "../../contexts/AuthContext";
 
 export function AppLayout() {
+  const { user, isLoading } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
 
@@ -37,6 +39,14 @@ export function AppLayout() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center" style={{ background: "#F1F5F9" }}>載入中...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#F1F5F9" }}>
